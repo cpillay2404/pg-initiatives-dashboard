@@ -484,67 +484,59 @@ function showManualFallback(reason) {
 }
 
 // ─── MSAL / Graph API auto-load ───────────────────────────────────────────────
+const REDIRECT_URI = window.location.href.split('?')[0].split('#')[0];
+const LOGIN_REQUEST = {
+  scopes: ['https://graph.microsoft.com/Sites.Read.All', 'https://graph.microsoft.com/Files.Read.All']
+};
+
 async function getMsalInstance() {
   if (msalInstance) return msalInstance;
   const msalConfig = {
     auth: {
       clientId: CLIENT_ID,
       authority: `https://login.microsoftonline.com/${TENANT_ID}`,
-      redirectUri: window.location.href.split('?')[0].split('#')[0],
-      navigateToLoginRequestUrl: true,
+      redirectUri: REDIRECT_URI,
     },
-    cache: { cacheLocation: 'localStorage', storeAuthStateInCookie: true }
+    cache: { cacheLocation: 'sessionStorage', storeAuthStateInCookie: false }
   };
   msalInstance = new msal.PublicClientApplication(msalConfig);
   await msalInstance.initialize();
   return msalInstance;
 }
 
-const LOGIN_REQUEST = {
-  scopes: ['https://graph.microsoft.com/Sites.Read.All', 'https://graph.microsoft.com/Files.Read.All']
-};
-
 async function autoLoad() {
   try {
     const instance = await getMsalInstance();
 
-    // Handle redirect response first — MUST be called on every page load
-    let redirectResult = null;
-    try {
-      redirectResult = await instance.handleRedirectPromise();
-    } catch(e) {
-      console.log('handleRedirectPromise error:', e);
-    }
+    // ALWAYS call handleRedirectPromise on page load
+    const redirectResult = await instance.handleRedirectPromise().catch(e => {
+      console.log('Redirect promise error:', e);
+      return null;
+    });
 
     if (redirectResult && redirectResult.accessToken) {
-      // Came back from Microsoft login — load data automatically
+      // Successfully returned from Microsoft login — load data
       accessToken = redirectResult.accessToken;
-      document.getElementById('load-screen').style.display = 'none';
-      document.getElementById('app').style.display = 'block';
-      document.getElementById('last-loaded').textContent = `SharePoint (live) · ${now()}`;
-      setStatus('Loading data from SharePoint...');
+      setStatus('Loading data...');
       await loadFromGraph();
       return;
     }
 
-    // Check if already signed in from a previous session
+    // Check for existing session
     const accounts = instance.getAllAccounts();
     if (accounts.length > 0) {
       try {
-        const silent = await instance.acquireTokenSilent({ ...LOGIN_REQUEST, account: accounts[0] });
-        accessToken = silent.accessToken;
-        setStatus('Connected — loading data...');
+        const result = await instance.acquireTokenSilent({ ...LOGIN_REQUEST, account: accounts[0] });
+        accessToken = result.accessToken;
+        setStatus('Loading data...');
         await loadFromGraph();
         return;
       } catch(e) {
-        // Silent failed — need interactive login
-        console.log('Silent token failed:', e.errorCode);
+        console.log('Silent failed:', e.errorCode);
       }
     }
 
-    // Not signed in — show button
     setStatus('Click "Sign in" to connect to SharePoint automatically.');
-
   } catch(err) {
     console.error('autoLoad error:', err);
     setStatus('Click "Sign in" to connect to SharePoint.');
@@ -553,43 +545,38 @@ async function autoLoad() {
 
 async function signInAndLoad() {
   try {
-    // Clear any stuck interaction state
-    sessionStorage.removeItem('msal.interaction.status');
-    localStorage.removeItem('msal.interaction.status');
-
     const instance = await getMsalInstance();
-    setStatus('Connecting to Microsoft...');
 
     // Try silent first
     const accounts = instance.getAllAccounts();
     if (accounts.length > 0) {
       try {
-        const silent = await instance.acquireTokenSilent({ ...LOGIN_REQUEST, account: accounts[0] });
-        accessToken = silent.accessToken;
-        setStatus('Signed in — loading data...');
+        const result = await instance.acquireTokenSilent({ ...LOGIN_REQUEST, account: accounts[0] });
+        accessToken = result.accessToken;
         await loadFromGraph();
         return;
-      } catch(e) {
-        console.log('Silent failed, redirecting:', e.errorCode);
-      }
+      } catch(e) { /* need interactive */ }
     }
 
-    // Redirect to Microsoft login
-    await instance.loginRedirect(LOGIN_REQUEST);
+    // Redirect flow
+    setStatus('Redirecting to Microsoft sign-in...');
+    await instance.loginRedirect({
+      ...LOGIN_REQUEST,
+      redirectUri: REDIRECT_URI,
+      prompt: 'select_account'
+    });
 
   } catch(err) {
-    console.error('signInAndLoad error:', err);
-    // If interaction in progress, clear and retry
+    console.error('Sign-in error:', err);
     if (err.errorCode === 'interaction_in_progress') {
+      // Clear all MSAL state and reload
       sessionStorage.clear();
-      localStorage.removeItem('msal.interaction.status');
-      showManualFallback('Please refresh the page and try signing in again.');
+      window.location.reload();
     } else {
-      showManualFallback(`Sign-in failed: ${err.errorCode || err.message || JSON.stringify(err).slice(0,100)}`);
+      showManualFallback(`Sign-in failed: ${err.errorCode || err.message}`);
     }
   }
 }
-
 
 // ─── Manual file fallback ─────────────────────────────────────────────────────
 function handleFile(e) {
