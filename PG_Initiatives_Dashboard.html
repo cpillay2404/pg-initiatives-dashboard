@@ -507,15 +507,27 @@ const LOGIN_REQUEST = {
 async function autoLoad() {
   try {
     const instance = await getMsalInstance();
-    // Handle redirect response (coming back from Microsoft login page)
-    const redirectResult = await instance.handleRedirectPromise();
+
+    // Handle redirect response first — MUST be called on every page load
+    let redirectResult = null;
+    try {
+      redirectResult = await instance.handleRedirectPromise();
+    } catch(e) {
+      console.log('handleRedirectPromise error:', e);
+    }
+
     if (redirectResult && redirectResult.accessToken) {
+      // Came back from Microsoft login — load data automatically
       accessToken = redirectResult.accessToken;
-      setStatus('Signed in — loading data from SharePoint...');
+      document.getElementById('load-screen').style.display = 'none';
+      document.getElementById('app').style.display = 'block';
+      document.getElementById('last-loaded').textContent = `SharePoint (live) · ${now()}`;
+      setStatus('Loading data from SharePoint...');
       await loadFromGraph();
       return;
     }
-    // Check if already signed in silently
+
+    // Check if already signed in from a previous session
     const accounts = instance.getAllAccounts();
     if (accounts.length > 0) {
       try {
@@ -524,9 +536,15 @@ async function autoLoad() {
         setStatus('Connected — loading data...');
         await loadFromGraph();
         return;
-      } catch(e) { /* silent failed, need interactive */ }
+      } catch(e) {
+        // Silent failed — need interactive login
+        console.log('Silent token failed:', e.errorCode);
+      }
     }
-    setStatus('Click "Sign in" to connect to SharePoint.');
+
+    // Not signed in — show button
+    setStatus('Click "Sign in" to connect to SharePoint automatically.');
+
   } catch(err) {
     console.error('autoLoad error:', err);
     setStatus('Click "Sign in" to connect to SharePoint.');
@@ -535,8 +553,13 @@ async function autoLoad() {
 
 async function signInAndLoad() {
   try {
+    // Clear any stuck interaction state
+    sessionStorage.removeItem('msal.interaction.status');
+    localStorage.removeItem('msal.interaction.status');
+
     const instance = await getMsalInstance();
     setStatus('Connecting to Microsoft...');
+
     // Try silent first
     const accounts = instance.getAllAccounts();
     if (accounts.length > 0) {
@@ -546,13 +569,24 @@ async function signInAndLoad() {
         setStatus('Signed in — loading data...');
         await loadFromGraph();
         return;
-      } catch(e) { /* need interactive */ }
+      } catch(e) {
+        console.log('Silent failed, redirecting:', e.errorCode);
+      }
     }
-    // Redirect to Microsoft login — no popup needed
+
+    // Redirect to Microsoft login
     await instance.loginRedirect(LOGIN_REQUEST);
+
   } catch(err) {
     console.error('signInAndLoad error:', err);
-    showManualFallback(`Sign-in failed: ${err.errorCode || err.message || JSON.stringify(err).slice(0,100)}`);
+    // If interaction in progress, clear and retry
+    if (err.errorCode === 'interaction_in_progress') {
+      sessionStorage.clear();
+      localStorage.removeItem('msal.interaction.status');
+      showManualFallback('Please refresh the page and try signing in again.');
+    } else {
+      showManualFallback(`Sign-in failed: ${err.errorCode || err.message || JSON.stringify(err).slice(0,100)}`);
+    }
   }
 }
 
