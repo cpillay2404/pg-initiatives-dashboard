@@ -453,7 +453,7 @@ async function loadFromGraph() {
     const siteData = await siteResp.json();
     const siteId = siteData.id;
     setStatus('Found site — getting file...');
-    const fileUrl = `https://graph.microsoft.com/v1.0/sites/${siteId}/drive/root:/Shared Documents/Power BI - PG/Initiatives Tracker/New_Initiatives_2026_Tracker_.xlsx:/content`;
+    const fileUrl = `https://graph.microsoft.com/v1.0/sites/${siteId}/drive/root:/Shared%20Documents/Power%20BI%20-%20PG/Initiatives%20Tracker/New_Initiatives_2026_Tracker_.xlsx:/content`;
     const fileResp = await fetch(fileUrl, {
       headers: { Authorization: `Bearer ${accessToken}` }
     });
@@ -537,6 +537,25 @@ function now() {
 }
 
 // ─── Normalise a raw row ───────────────────────────────────────────────────────
+function processWorkbook(wb, source) {
+  const ws = wb.Sheets['Initiative Tracker'];
+  if (!ws) {
+    showManualFallback('Could not find sheet "Initiative Tracker" in the file.');
+    return;
+  }
+  const raw = XLSX.utils.sheet_to_json(ws, { defval: '' });
+  ALL_DATA = raw.map(normalise).filter(r => r.desc && r.desc.trim() !== '');
+  if (ALL_DATA.length === 0) {
+    showManualFallback('No data rows found in the Initiative Tracker sheet.');
+    return;
+  }
+  document.getElementById('last-loaded').textContent = `${source} · ${ALL_DATA.length} SKUs · ${now()}`;
+  document.getElementById('load-screen').style.display = 'none';
+  document.getElementById('app').style.display = 'block';
+  populateFilters();
+  renderAll();
+}
+
 function normalise(r) {
   const v = k => (r[k] ?? r[k.toLowerCase()] ?? '');
   const banner = k => {
