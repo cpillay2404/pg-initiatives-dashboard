@@ -387,7 +387,7 @@ async function autoLoad() {
     setStatus('Loading Microsoft sign-in library...');
 
     // Load MSAL
-    await loadScript('https://alcdn.msauth.net/browser/2.38.3/js/msal-browser.min.js');
+    await loadScript('https://unpkg.com/@azure/msal-browser@2.38.3/dist/msal-browser.min.js');
     setStatus('Signing in to Microsoft 365...');
 
     const msalConfig = {
@@ -440,7 +440,7 @@ async function autoLoad() {
 
   } catch(err) {
     console.warn('Auto-load error:', err);
-    showManualFallback(`Sign-in failed (${err.message || err}) — please load the file manually.`);
+    showManualFallback(`Sign-in failed: ${err.errorCode || err.message || JSON.stringify(err).slice(0,120)}`);
   }
 }
 
