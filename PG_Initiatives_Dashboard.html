@@ -384,45 +384,63 @@ function showManualFallback(reason) {
 // ─── MSAL / Graph API auto-load ───────────────────────────────────────────────
 async function autoLoad() {
   try {
-    setStatus('Signing in to Microsoft 365...');
+    setStatus('Loading Microsoft sign-in library...');
 
     // Load MSAL
     await loadScript('https://alcdn.msauth.net/browser/2.38.3/js/msal-browser.min.js');
+    setStatus('Signing in to Microsoft 365...');
 
     const msalConfig = {
       auth: {
         clientId: CLIENT_ID,
         authority: `https://login.microsoftonline.com/${TENANT_ID}`,
-        redirectUri: window.location.href.split('?')[0],
+        redirectUri: window.location.href.split('?')[0].split('#')[0],
       },
-      cache: { cacheLocation: 'sessionStorage' }
+      cache: { cacheLocation: 'localStorage', storeAuthStateInCookie: true }
     };
 
     const msalInstance = new msal.PublicClientApplication(msalConfig);
     await msalInstance.initialize();
 
-    const loginRequest = { scopes: ['https://graph.microsoft.com/Sites.Read.All'] };
+    // Handle redirect response first (in case we got redirected back)
+    await msalInstance.handleRedirectPromise();
 
-    // Try silent login first (already signed in via M365)
+    const loginRequest = {
+      scopes: [
+        'https://graph.microsoft.com/Sites.Read.All',
+        'https://graph.microsoft.com/Files.Read.All'
+      ]
+    };
+
     let tokenResponse;
-    try {
-      const accounts = msalInstance.getAllAccounts();
-      if (accounts.length > 0) {
-        tokenResponse = await msalInstance.acquireTokenSilent({ ...loginRequest, account: accounts[0] });
-      } else {
+    const accounts = msalInstance.getAllAccounts();
+
+    if (accounts.length > 0) {
+      // Already signed in — try silent
+      try {
+        setStatus('Connecting to SharePoint...');
+        tokenResponse = await msalInstance.acquireTokenSilent({
+          ...loginRequest,
+          account: accounts[0]
+        });
+      } catch(silentErr) {
+        // Silent failed — show popup
+        setStatus('Please sign in with your Microsoft 365 account...');
         tokenResponse = await msalInstance.acquireTokenPopup(loginRequest);
       }
-    } catch {
+    } else {
+      // Not signed in — show popup
+      setStatus('Please sign in with your Microsoft 365 account...');
       tokenResponse = await msalInstance.acquireTokenPopup(loginRequest);
     }
 
     accessToken = tokenResponse.accessToken;
-    setStatus('Connected — loading Excel data...');
+    setStatus('Signed in — loading Excel data from SharePoint...');
     await loadFromGraph();
 
   } catch(err) {
-    console.warn('Auto-load failed:', err.message);
-    showManualFallback('Could not connect automatically — please load the file manually.');
+    console.warn('Auto-load error:', err);
+    showManualFallback(`Sign-in failed (${err.message || err}) — please load the file manually.`);
   }
 }
 
@@ -437,23 +455,42 @@ function loadScript(src) {
 
 async function loadFromGraph() {
   try {
-    // Get file content via Graph API
-    const encodedPath = encodeURIComponent(FILE_PATH);
-    const url = `https://graph.microsoft.com/v1.0/sites/meridiangroupza.sharepoint.com:/sites/PowerBI9-PowerBI-PG:/drive/root:${FILE_PATH}:/content`;
+    setStatus('Reading Excel file from SharePoint...');
 
-    const response = await fetch(url, {
+    // Use the correct Graph API path for a specific file
+    const encodedFilePath = FILE_PATH.split('/').map(encodeURIComponent).join('/');
+    const url = `https://graph.microsoft.com/v1.0/drives/root:/Shared%20Documents/Power%20BI%20-%20PG/Initiatives%20Tracker/New_Initiatives_2026_Tracker_.xlsx:/content?site=meridiangroupza.sharepoint.com:/sites/PowerBI9-PowerBI-PG`;
+
+    // Correct Graph URL: get drive item by path
+    const siteUrl = `https://graph.microsoft.com/v1.0/sites/meridiangroupza.sharepoint.com:/sites/PowerBI9-PowerBI-PG`;
+    
+    // First get the site ID
+    const siteResp = await fetch(siteUrl, {
+      headers: { Authorization: `Bearer ${accessToken}` }
+    });
+    if (!siteResp.ok) throw new Error(`Site lookup failed: ${siteResp.status} ${siteResp.statusText}`);
+    const siteData = await siteResp.json();
+    const siteId = siteData.id;
+
+    setStatus('Found SharePoint site — getting file...');
+
+    // Get the file content
+    const fileUrl = `https://graph.microsoft.com/v1.0/sites/${siteId}/drive/root:/Shared Documents/Power BI - PG/Initiatives Tracker/New_Initiatives_2026_Tracker_.xlsx:/content`;
+    
+    const response = await fetch(fileUrl, {
       headers: { Authorization: `Bearer ${accessToken}` }
     });
 
-    if (!response.ok) throw new Error(`Graph API error: ${response.status} ${response.statusText}`);
+    if (!response.ok) throw new Error(`File read failed: ${response.status} ${response.statusText}`);
 
+    setStatus('File retrieved — loading dashboard...');
     const arrayBuffer = await response.arrayBuffer();
     const wb = XLSX.read(arrayBuffer, { type: 'array', cellDates: true });
     processWorkbook(wb, 'SharePoint (live)');
 
   } catch(err) {
-    console.warn('Graph load failed:', err.message);
-    showManualFallback('Could not read file from SharePoint — please load manually.');
+    console.warn('Graph load failed:', err);
+    showManualFallback(`Could not read file from SharePoint: ${err.message} — please load manually.`);
   }
 }
 
