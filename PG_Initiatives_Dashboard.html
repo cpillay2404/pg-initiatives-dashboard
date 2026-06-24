@@ -1,0 +1,916 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>P&G New Initiatives 25/26 — Dashboard</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --navy:#0B2D5C;--navy2:#1B3266;--navy3:#243f7a;
+  --white:#fff;--grey:#F4F6FB;--gborder:#DDE3EF;
+  --dark:#1A2340;--mid:#4A5572;--light:#8A99B5;
+  --green:#1A7A4A;--green-l:#E6F6EE;
+  --red:#C0392B;--red-l:#FDEAEA;
+  --amber:#D97706;--amber-l:#FFF4E0;
+  --orange:#C05621;--orange-l:#FFF0E6;
+  --purple:#3A2E8C;--purple-l:#EEEEFB;
+  --blue:#185FA5;--blue-l:#E6F1FB;
+}
+body{font-family:'Segoe UI',Arial,sans-serif;background:var(--grey);color:var(--dark);font-size:13px;min-height:100vh}
+
+/* ── LOAD SCREEN ─────────────────────────────────────────────────────────── */
+#load-screen{
+  position:fixed;inset:0;background:var(--navy);
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  z-index:1000;gap:24px;
+}
+#load-screen h1{color:#fff;font-size:28px;font-weight:700;letter-spacing:.3px}
+#load-screen p{color:#7ea8cc;font-size:13px;max-width:420px;text-align:center;line-height:1.6}
+.load-btn{
+  background:#fff;color:var(--navy);border:none;border-radius:8px;
+  padding:14px 36px;font-size:15px;font-weight:700;cursor:pointer;
+  letter-spacing:.2px;transition:transform .1s,box-shadow .1s;
+  box-shadow:0 4px 16px rgba(0,0,0,.2);
+}
+.load-btn:hover{transform:translateY(-1px);box-shadow:0 6px 20px rgba(0,0,0,.3)}
+.load-btn:active{transform:translateY(0)}
+#file-input{display:none}
+.load-note{color:#5a7fa8;font-size:11px;margin-top:-12px}
+
+/* ── MAIN LAYOUT ──────────────────────────────────────────────────────────── */
+#app{display:none}
+.page-header{
+  background:var(--navy);padding:14px 28px;
+  display:flex;align-items:center;justify-content:space-between;gap:16px;
+  position:sticky;top:0;z-index:100;
+}
+.page-header h1{color:#fff;font-size:19px;font-weight:700;letter-spacing:.2px}
+.page-header p{color:#7ea8cc;font-size:11px;margin-top:2px}
+.header-right{display:flex;align-items:center;gap:10px;flex-shrink:0}
+.reload-btn{
+  background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.2);
+  color:#c9d8ee;border-radius:6px;padding:6px 14px;font-size:11.5px;
+  cursor:pointer;font-weight:500;transition:background .15s;white-space:nowrap;
+}
+.reload-btn:hover{background:rgba(255,255,255,.2)}
+.last-loaded{color:#5a7fa8;font-size:11px;white-space:nowrap}
+
+/* ── TABS ─────────────────────────────────────────────────────────────────── */
+.tabs{background:#fff;border-bottom:1px solid var(--gborder);padding:0 28px;display:flex;gap:4px}
+.tab{
+  padding:10px 20px;font-size:12.5px;font-weight:600;cursor:pointer;
+  border:none;background:transparent;color:var(--light);letter-spacing:.2px;
+  border-bottom:3px solid transparent;transition:color .15s,border-color .15s;
+}
+.tab.active{color:var(--navy);border-bottom-color:var(--purple)}
+.tab:hover:not(.active){color:var(--mid)}
+
+/* ── BODY ─────────────────────────────────────────────────────────────────── */
+.body{padding:20px 28px 40px}
+.tab-panel{display:none}.tab-panel.active{display:block}
+
+/* ── SECTION HEADERS ─────────────────────────────────────────────────────── */
+.section-hdr{
+  background:var(--navy);color:#c9d8ee;padding:9px 14px;
+  font-size:10.5px;font-weight:600;letter-spacing:.5px;text-transform:uppercase;
+  border-radius:6px 6px 0 0;
+}
+
+/* ── KPI TILES ────────────────────────────────────────────────────────────── */
+.kpi-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin-bottom:20px}
+.kpi{
+  background:#fff;border:1px solid var(--gborder);border-radius:8px;
+  padding:14px 16px;border-top:3px solid var(--navy);
+}
+.kpi-val{font-size:28px;font-weight:700;line-height:1;color:var(--navy)}
+.kpi-label{font-size:11px;font-weight:600;color:var(--mid);margin-top:5px}
+
+/* ── TWO-COL GRID ─────────────────────────────────────────────────────────── */
+.two-col{display:grid;grid-template-columns:1.3fr 1fr;gap:16px;margin-bottom:16px}
+.panel{background:#fff;border:1px solid var(--gborder);border-radius:8px;overflow:hidden}
+
+/* ── TABLES ───────────────────────────────────────────────────────────────── */
+table{width:100%;border-collapse:collapse;font-size:12px}
+thead th{
+  background:var(--navy);color:#c9d8ee;padding:8px 12px;text-align:left;
+  font-size:10.5px;font-weight:600;letter-spacing:.4px;text-transform:uppercase;
+  white-space:nowrap;
+}
+thead th.num{text-align:center}
+tbody tr{border-bottom:1px solid #edf0f7;transition:background .1s}
+tbody tr:nth-child(even){background:#f8f9fd}
+tbody tr:hover td{background:#f0f4fd}
+td{padding:8px 12px;vertical-align:middle;color:var(--dark)}
+td.num{text-align:center}
+td.name{font-weight:500}
+
+/* ── BADGES ───────────────────────────────────────────────────────────────── */
+.badge{display:inline-block;padding:2px 9px;border-radius:4px;font-size:10.5px;font-weight:600;white-space:nowrap}
+.b-yes,.b-fully-listed,.b-ready {background:var(--green-l);color:var(--green)}
+.b-no,.b-listing-gap,.b-risk    {background:var(--red-l);color:var(--red)}
+.b-tbc,.b-watch                 {background:var(--amber-l);color:var(--amber)}
+.b-disc,.b-in-discussion        {background:var(--purple-l);color:var(--purple)}
+.b-pending                      {background:#f0f0f4;color:var(--light)}
+.b-high                         {background:var(--red-l);color:var(--red)}
+.b-medium                       {background:var(--amber-l);color:var(--amber)}
+.b-low                          {background:var(--green-l);color:var(--green)}
+.b-available                    {background:var(--green-l);color:var(--green)}
+.b-missing                      {background:var(--red-l);color:var(--red)}
+
+/* ── PROGRESS BAR ─────────────────────────────────────────────────────────── */
+.prog-wrap{background:#e8edf7;border-radius:4px;height:6px;overflow:hidden;min-width:60px}
+.prog-fill{height:100%;border-radius:4px;transition:width .4s}
+
+/* ── COUNTDOWN ────────────────────────────────────────────────────────────── */
+.countdown-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px;margin-bottom:20px}
+.cd-card{
+  background:#fff;border:1px solid var(--gborder);border-radius:10px;
+  padding:14px 16px;display:flex;gap:14px;align-items:flex-start;
+  border-left:4px solid var(--navy);
+}
+.cd-card.urgent  {border-left-color:var(--red);  background:#fffafa}
+.cd-card.soon    {border-left-color:var(--orange);background:#fffdf9}
+.cd-card.approach{border-left-color:var(--amber); background:#fffef5}
+.cd-card.ontrack {border-left-color:var(--blue);  background:#f5f9ff}
+.cd-days{
+  min-width:52px;text-align:center;flex-shrink:0;
+}
+.cd-days-num{font-size:30px;font-weight:700;line-height:1}
+.cd-days-label{font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;color:var(--light);margin-top:1px}
+.cd-card.urgent   .cd-days-num{color:var(--red)}
+.cd-card.soon     .cd-days-num{color:var(--orange)}
+.cd-card.approach .cd-days-num{color:var(--amber)}
+.cd-card.ontrack  .cd-days-num{color:var(--blue)}
+.cd-info{flex:1;min-width:0}
+.cd-desc{font-weight:600;font-size:12px;color:var(--dark);line-height:1.3;margin-bottom:4px}
+.cd-meta{font-size:10.5px;color:var(--mid);margin-bottom:6px}
+.cd-foot{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+
+/* ── TRACKER TABLE ────────────────────────────────────────────────────────── */
+.filters{
+  background:#fff;padding:10px 16px;border-bottom:1px solid var(--gborder);
+  display:flex;gap:8px;align-items:center;flex-wrap:wrap;
+}
+.filters select,.filters input{
+  border:1px solid var(--gborder);border-radius:6px;padding:5px 10px;
+  font-size:11.5px;color:var(--dark);background:#f9fafc;outline:none;cursor:pointer;
+}
+.filters select:hover,.filters input:hover{border-color:var(--navy2)}
+.filter-reset{
+  background:var(--navy);color:#fff;border:none;border-radius:6px;
+  padding:5px 14px;font-size:11.5px;cursor:pointer;font-weight:500;
+}
+.filter-reset:hover{background:var(--navy2)}
+.filter-count{margin-left:auto;font-size:11px;color:var(--light)}
+.tracker-wrap{overflow-x:auto;border-radius:0 0 8px 8px}
+.no-data{text-align:center;padding:40px;color:var(--light);font-size:13px}
+
+/* ── EMPTY STATE ─────────────────────────────────────────────────────────── */
+.empty-state{
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  padding:60px 20px;color:var(--light);gap:12px;text-align:center;
+}
+.empty-state h3{font-size:16px;color:var(--mid)}
+.empty-state p{font-size:12px;max-width:360px;line-height:1.6}
+
+@media(max-width:900px){
+  .two-col{grid-template-columns:1fr}
+  .body{padding:14px}
+  .kpi-grid{grid-template-columns:repeat(3,1fr)}
+}
+</style>
+</head>
+<body>
+
+<!-- ═══════════════════ LOAD SCREEN ═══════════════════ -->
+<div id="load-screen">
+  <div style="text-align:center">
+    <div style="font-size:11px;font-weight:600;letter-spacing:2px;color:#3a6fa8;text-transform:uppercase;margin-bottom:8px">Meridian Group</div>
+    <h1>P&G New Initiatives 25/26</h1>
+    <p style="margin-top:8px">Launch readiness · Listing status · Planogram tracking · Go-live countdown</p>
+  </div>
+  <div id="load-status" style="color:#7ea8cc;font-size:13px;min-height:24px;text-align:center">Connecting to SharePoint...</div>
+  <div style="text-align:center;display:flex;flex-direction:column;align-items:center;gap:10px">
+    <button class="load-btn" id="manual-load-btn" style="display:none" onclick="document.getElementById('file-input').click()">
+      Load Data Manually
+    </button>
+    <p class="load-note" id="load-note" style="display:none">SharePoint auto-connect unavailable — select your Excel file instead</p>
+  </div>
+  <input type="file" id="file-input" accept=".xlsx,.xls" onchange="handleFile(event)">
+</div>
+
+<!-- ═══════════════════ MAIN APP ═══════════════════ -->
+<div id="app">
+
+  <!-- Header -->
+  <div class="page-header">
+    <div>
+      <h1>P&G New Initiatives 25/26</h1>
+      <p>Launch readiness · Banner listing status · Planogram tracking</p>
+    </div>
+    <div class="header-right">
+      <span class="last-loaded" id="last-loaded"></span>
+      <button class="reload-btn" onclick="refreshData()">↻ Refresh</button>
+      <button class="reload-btn" onclick="document.getElementById('file-input').click()">↑ Load manually</button>
+    </div>
+  </div>
+
+  <!-- Tabs -->
+  <div class="tabs">
+    <button class="tab active" onclick="switchTab('dashboard',this)">Dashboard</button>
+    <button class="tab" onclick="switchTab('tracker',this)">SKU Tracker</button>
+  </div>
+
+  <!-- Body -->
+  <div class="body">
+
+    <!-- ══════ DASHBOARD TAB ══════ -->
+    <div id="tab-dashboard" class="tab-panel active">
+
+      <!-- KPI tiles -->
+      <div class="kpi-grid" id="kpi-grid"></div>
+
+      <!-- Planogram & Image Status -->
+      <div class="panel" style="margin-bottom:16px">
+        <div class="section-hdr">Planogram &amp; Image Status</div>
+        <div id="plano-row" style="padding:16px 20px;display:flex;align-items:stretch;gap:0;flex-wrap:wrap"></div>
+      </div>
+
+      <!-- Launch Countdown -->
+      <div style="margin-bottom:16px">
+        <div class="section-hdr" style="border-radius:6px 6px 0 0;display:flex;align-items:center;justify-content:space-between;padding-right:16px">
+          <span>Launch Countdown</span>
+          <span style="font-size:9.5px;font-weight:400;letter-spacing:.3px;color:#7ea8cc">
+            <span style="color:#C0392B;font-weight:700">■</span> ≤7 days &nbsp;
+            <span style="color:#C05621;font-weight:700">■</span> 8–14 days &nbsp;
+            <span style="color:#D97706;font-weight:700">■</span> 15–30 days &nbsp;
+            <span style="color:#185FA5;font-weight:700">■</span> 31+ days
+          </span>
+        </div>
+        <div class="countdown-grid" id="countdown-grid" style="padding:12px 0 4px"></div>
+      </div>
+
+      <!-- Banner + Brand tables -->
+      <div class="two-col">
+        <div class="panel">
+          <div class="section-hdr">Banner Listing Status</div>
+          <table id="banner-table">
+            <thead><tr>
+              <th>Banner</th>
+              <th class="num">Listed</th>
+              <th class="num">NO</th>
+              <th class="num">TBC</th>
+              <th class="num">In Discussion</th>
+              <th>Completion</th>
+              <th class="num">Status</th>
+            </tr></thead>
+            <tbody id="banner-body"></tbody>
+          </table>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:16px">
+          <div class="panel">
+            <div class="section-hdr">Brand Overview</div>
+            <table>
+              <thead><tr>
+                <th>Brand</th>
+                <th class="num">SKUs</th>
+                <th class="num">Listing Gaps</th>
+                <th class="num">Gap %</th>
+                <th class="num">Plano Outstanding</th>
+              </tr></thead>
+              <tbody id="brand-body"></tbody>
+            </table>
+          </div>
+          <div class="panel">
+            <div class="section-hdr">By Launch Month</div>
+            <table>
+              <thead><tr>
+                <th>Month</th>
+                <th class="num">SKUs</th>
+                <th class="num">Listing Gaps</th>
+              </tr></thead>
+              <tbody id="month-body"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══════ TRACKER TAB ══════ -->
+    <div id="tab-tracker" class="tab-panel">
+      <div class="panel">
+        <div class="filters" id="tracker-filters">
+          <select id="f-brand"  onchange="filterTracker()"><option value="">All Brands</option></select>
+          <select id="f-launch" onchange="filterTracker()"><option value="">All Launch Months</option></select>
+          <select id="f-status" onchange="filterTracker()">
+            <option value="">All Statuses</option>
+            <option>Fully Listed</option><option>Listing Gap</option>
+            <option>TBC</option><option>In Discussion</option><option>Pending</option>
+          </select>
+          <select id="f-risk" onchange="filterTracker()">
+            <option value="">All Risk Levels</option>
+            <option>High</option><option>Medium</option><option>Low</option>
+          </select>
+          <select id="f-plano" onchange="filterTracker()">
+            <option value="">All Planogram</option>
+            <option>Received</option>
+            <option>Outstanding</option>
+            <option>To update</option>
+            <option>To confirm</option>
+            <option>Pending</option>
+          </select>
+          <input id="f-search" placeholder="Search name or barcode…" oninput="filterTracker()" style="min-width:180px">
+          <button class="filter-reset" onclick="resetFilters()">Reset</button>
+          <span class="filter-count" id="filter-count"></span>
+        </div>
+        <div class="tracker-wrap">
+          <table id="tracker-table">
+            <thead><tr>
+              <th>Barcode</th>
+              <th>Description</th>
+              <th>Brand</th>
+              <th>Launch</th>
+              <th class="num">Image</th>
+              <th class="num">Plano</th>
+              <th class="num">Plano Date</th>
+              <th class="num">Clicks</th>
+              <th class="num">PnP</th>
+              <th class="num">Makro</th>
+              <th class="num">Shoprite</th>
+              <th class="num">Dis-Chem</th>
+              <th class="num">Game</th>
+              <th class="num">Listed%</th>
+              <th class="num">Status</th>
+              <th class="num">Risk</th>
+              <th>Owner</th>
+              <th>Next Action</th>
+              <th>Comments</th>
+            </tr></thead>
+            <tbody id="tracker-body"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /body -->
+</div><!-- /app -->
+
+<script>
+// ─── Config ───────────────────────────────────────────────────────────────────
+const TENANT_ID   = 'cbe83df2-b350-4dab-8d5f-f78d21fe7d27';
+const CLIENT_ID   = '0e4070b3-fe5d-40c8-9060-5f970dbd0cf3';
+const SITE_URL    = 'https://meridiangroupza.sharepoint.com/sites/PowerBI9-PowerBI-PG';
+const FILE_PATH   = '/sites/PowerBI9-PowerBI-PG/Shared Documents/Power BI - PG/Initiatives Tracker/New_Initiatives_2026_Tracker_.xlsx';
+const SHEET_NAME  = 'Initiative Tracker';
+
+// ─── State ────────────────────────────────────────────────────────────────────
+let ALL_DATA = [];
+let accessToken = null;
+
+// ─── Status helper ────────────────────────────────────────────────────────────
+function setStatus(msg) {
+  const el = document.getElementById('load-status');
+  if (el) el.textContent = msg;
+}
+
+function showManualFallback(reason) {
+  setStatus(reason);
+  document.getElementById('manual-load-btn').style.display = 'block';
+  document.getElementById('load-note').style.display = 'block';
+}
+
+// ─── MSAL / Graph API auto-load ───────────────────────────────────────────────
+async function autoLoad() {
+  try {
+    setStatus('Signing in to Microsoft 365...');
+
+    // Load MSAL
+    await loadScript('https://alcdn.msauth.net/browser/2.38.3/js/msal-browser.min.js');
+
+    const msalConfig = {
+      auth: {
+        clientId: CLIENT_ID,
+        authority: `https://login.microsoftonline.com/${TENANT_ID}`,
+        redirectUri: window.location.href.split('?')[0],
+      },
+      cache: { cacheLocation: 'sessionStorage' }
+    };
+
+    const msalInstance = new msal.PublicClientApplication(msalConfig);
+    await msalInstance.initialize();
+
+    const loginRequest = { scopes: ['https://graph.microsoft.com/Sites.Read.All'] };
+
+    // Try silent login first (already signed in via M365)
+    let tokenResponse;
+    try {
+      const accounts = msalInstance.getAllAccounts();
+      if (accounts.length > 0) {
+        tokenResponse = await msalInstance.acquireTokenSilent({ ...loginRequest, account: accounts[0] });
+      } else {
+        tokenResponse = await msalInstance.acquireTokenPopup(loginRequest);
+      }
+    } catch {
+      tokenResponse = await msalInstance.acquireTokenPopup(loginRequest);
+    }
+
+    accessToken = tokenResponse.accessToken;
+    setStatus('Connected — loading Excel data...');
+    await loadFromGraph();
+
+  } catch(err) {
+    console.warn('Auto-load failed:', err.message);
+    showManualFallback('Could not connect automatically — please load the file manually.');
+  }
+}
+
+function loadScript(src) {
+  return new Promise((resolve, reject) => {
+    if (document.querySelector(`script[src="${src}"]`)) { resolve(); return; }
+    const s = document.createElement('script');
+    s.src = src; s.onload = resolve; s.onerror = reject;
+    document.head.appendChild(s);
+  });
+}
+
+async function loadFromGraph() {
+  try {
+    // Get file content via Graph API
+    const encodedPath = encodeURIComponent(FILE_PATH);
+    const url = `https://graph.microsoft.com/v1.0/sites/meridiangroupza.sharepoint.com:/sites/PowerBI9-PowerBI-PG:/drive/root:${FILE_PATH}:/content`;
+
+    const response = await fetch(url, {
+      headers: { Authorization: `Bearer ${accessToken}` }
+    });
+
+    if (!response.ok) throw new Error(`Graph API error: ${response.status} ${response.statusText}`);
+
+    const arrayBuffer = await response.arrayBuffer();
+    const wb = XLSX.read(arrayBuffer, { type: 'array', cellDates: true });
+    processWorkbook(wb, 'SharePoint (live)');
+
+  } catch(err) {
+    console.warn('Graph load failed:', err.message);
+    showManualFallback('Could not read file from SharePoint — please load manually.');
+  }
+}
+
+async function refreshData() {
+  if (accessToken) {
+    setStatus('Refreshing data...');
+    document.getElementById('load-screen').style.display = 'flex';
+    document.getElementById('app').style.display = 'none';
+    await loadFromGraph();
+  } else {
+    document.getElementById('file-input').click();
+  }
+}
+
+// ─── Process workbook (shared by both auto and manual load) ───────────────────
+function processWorkbook(wb, source) {
+  const ws = wb.Sheets[SHEET_NAME];
+  if (!ws) {
+    showManualFallback(`Could not find sheet "${SHEET_NAME}" in the file.`);
+    return;
+  }
+  const raw = XLSX.utils.sheet_to_json(ws, { defval: '' });
+  ALL_DATA = raw.map(normalise).filter(r => r.desc && r.desc.trim() !== '');
+  if (ALL_DATA.length === 0) {
+    showManualFallback('No data rows found — please load the file manually.');
+    return;
+  }
+  document.getElementById('last-loaded').textContent =
+    `${source} · ${ALL_DATA.length} SKUs · ${now()}`;
+  document.getElementById('load-screen').style.display = 'none';
+  document.getElementById('app').style.display = 'block';
+  populateFilters();
+  renderAll();
+}
+
+// ─── Manual file fallback ─────────────────────────────────────────────────────
+function handleFile(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = ev => {
+    try {
+      const wb = XLSX.read(ev.target.result, { type: 'binary', cellDates: true });
+      processWorkbook(wb, file.name);
+    } catch(err) {
+      alert('Error reading file: ' + err.message);
+    }
+    e.target.value = '';
+  };
+  reader.readAsBinaryString(file);
+}
+
+// ─── Auto-load on page open ───────────────────────────────────────────────────
+window.addEventListener('DOMContentLoaded', () => autoLoad());
+
+function now() {
+  return new Date().toLocaleString('en-ZA',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'});
+}
+
+// ─── Normalise a raw row ───────────────────────────────────────────────────────
+function normalise(r) {
+  const v = k => (r[k] ?? r[k.toLowerCase()] ?? '');
+  const banner = k => {
+    const raw = String(v(k)).trim();
+    if (!raw || raw === '') return null;
+    return raw;
+  };
+
+  const banners = {
+    clicks:   banner('Clicks'),
+    pnp:      banner('PnP'),
+    makro:    banner('Makro'),
+    shoprite: banner('Shoprite'),
+    dischem:  banner('Dis-Chem'),
+    game:     banner('Game'),
+  };
+
+  const filled  = Object.values(banners).filter(x => x && x !== '');
+  const yes     = filled.filter(x => x === 'YES').length;
+  const no      = filled.filter(x => x === 'NO').length;
+  const tbc     = filled.filter(x => x === 'TBC').length;
+  const disc    = filled.filter(x => x === 'In Discussion' || x === 'In discussion to list').length;
+  const pct     = filled.length ? yes / filled.length : 0;
+
+  let status;
+  if (no > 0)           status = 'Listing Gap';
+  else if (tbc > 0)     status = 'TBC';
+  else if (disc > 0)    status = 'In Discussion';
+  else if (yes === filled.length && filled.length > 0) status = 'Fully Listed';
+  else                  status = 'Pending';
+
+  // ── Planogram — read all possible column name variants ─────────────────────
+  const planoReceived = String(
+    r['Planogram Received'] || r['Planogram'] || ''
+  ).trim();
+  const planoStatusRaw = String(
+    r['Planogram Status'] || r['Planogram Status '] || ''
+  ).trim();
+  const planoDate = r['Planogram Date Received'] || r['Plano Date'] || null;
+
+  // Derive a single clean status
+  let planoStatus;
+  if (planoReceived === 'YES' || planoStatusRaw === 'Received')        planoStatus = 'Received';
+  else if (planoReceived === 'NO'  || planoStatusRaw === 'Outstanding') planoStatus = 'Outstanding';
+  else if (planoReceived === 'TBC' || planoStatusRaw === 'To confirm')  planoStatus = 'To confirm';
+  else if (planoReceived === 'N/A' || planoStatusRaw === 'Not applicable') planoStatus = 'N/A';
+  else if (planoStatusRaw === 'To update')                              planoStatus = 'To update';
+  else                                                                  planoStatus = 'Pending';
+
+  const plano = planoReceived; // keep raw YES/NO/TBC for risk calc
+
+  let risk;
+  if (no >= 2 || plano === 'NO') risk = 'High';
+  else if (tbc > 0 || disc > 0 || planoStatus === 'To update' || planoStatus === 'Pending') risk = 'Medium';
+  else risk = 'Low';
+
+  // Launch date — could be a JS Date object or a string
+  let launchDate = null;
+  const ld = r['Launch Date'] ?? r['SOS / Launch Date'];
+  if (ld instanceof Date && !isNaN(ld)) launchDate = ld;
+  else if (typeof ld === 'number') launchDate = new Date(Math.round((ld - 25569) * 86400 * 1000));
+
+  const daysAway = launchDate ? Math.ceil((launchDate - new Date().setHours(0,0,0,0)) / 86400000) : null;
+
+  return {
+    barcode:    String(v('Barcode')).trim().replace(/^\u200b/,''),
+    desc:       String(v('Product Description')).trim(),
+    brand:      String(v('Brand')).trim(),
+    launch:     String(v('Launch Month')).trim().replace(/'/g,''),
+    launchDate,
+    daysAway,
+    image:      String(v('Image Status')).trim() || String(v('Image Link')).trim() ? 'Available' : 'Missing',
+    imageStatus:String(v('Image Status')).trim(),
+    planogram:   planoReceived,
+    planoStatus,
+    planoDate,
+    ...banners,
+    yes, no, tbc, disc, pct, status, risk,
+    fullyListed: yes === filled.length && filled.length > 0,
+    owner:      String(v('Owner')).trim(),
+    nextAction: String(v('Next Action')).trim(),
+    comments:   String(v('Comments')).trim(),
+  };
+}
+
+// ─── Tab switching ────────────────────────────────────────────────────────────
+function switchTab(name, btn) {
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.tab').forEach(b => b.classList.remove('active'));
+  document.getElementById('tab-' + name).classList.add('active');
+  btn.classList.add('active');
+}
+
+// ─── Render all ───────────────────────────────────────────────────────────────
+function renderAll() {
+  renderKPIs();
+  renderBannerTable();
+  renderBrandTable();
+  renderMonthTable();
+  renderPlanoRow();
+  renderCountdown();
+  filterTracker();
+}
+
+// ─── KPIs ─────────────────────────────────────────────────────────────────────
+function renderKPIs() {
+  const d = ALL_DATA;
+  const total = d.length;
+  const pct = (n) => total ? Math.round(n/total*100) + '%' : '—';
+
+  const fullyListed  = d.filter(s=>s.fullyListed).length;
+  const gaps         = d.filter(s=>s.status==='Listing Gap').length;
+  const tbc          = d.filter(s=>s.status==='TBC').length;
+  const inDisc       = d.filter(s=>s.status==='In Discussion').length;
+  const highRisk     = d.filter(s=>s.risk==='High').length;
+  const planoRecvd   = d.filter(s=>s.planoStatus==='Received').length;
+  const planoToUpd   = d.filter(s=>s.planoStatus==='To update'||s.planoStatus==='Pending'||s.planoStatus==='Outstanding').length;
+  const imgMissing   = d.filter(s=>s.imageStatus==='Missing').length;
+
+  const tiles = [
+    { val:total,        label:'Total SKUs',           sub:null,                          accent:'#0B2D5C' },
+    { val:fullyListed,  label:'Fully Listed',          sub:`${pct(fullyListed)} of SKUs`, accent:'#1A7A4A' },
+    { val:gaps,         label:'Listing Gaps',          sub:`${pct(gaps)} of SKUs`,        accent:'#C0392B' },
+    { val:tbc,          label:'TBC Listings',          sub:`${pct(tbc)} of SKUs`,         accent:'#D97706' },
+    { val:inDisc,       label:'In Discussion',         sub:`${pct(inDisc)} of SKUs`,      accent:'#3A2E8C' },
+    { val:highRisk,     label:'High Risk',             sub:`${pct(highRisk)} of SKUs`,    accent:'#C0392B' },
+    { val:planoRecvd,  label:'Planograms Received', sub:`${pct(planoRecvd)} of SKUs`,  accent:'#185FA5' },
+    { val:planoToUpd,  label:'Planograms To Update', sub:`${pct(planoToUpd)} of SKUs`, accent:'#D97706' },
+    { val:imgMissing,   label:'Images Missing',        sub:`${pct(imgMissing)} of SKUs`,  accent:'#D97706' },
+  ];
+  document.getElementById('kpi-grid').innerHTML = tiles.map(t =>
+    `<div class="kpi" style="border-top-color:${t.accent}">
+       <div class="kpi-val" style="color:${t.accent}">${t.val}</div>
+       <div class="kpi-label">${t.label}</div>
+       ${t.sub ? `<div style="font-size:10px;color:var(--light);margin-top:3px">${t.sub}</div>` : ''}
+     </div>`
+  ).join('');
+}
+
+// ─── Banner table ─────────────────────────────────────────────────────────────
+const BANNER_KEYS = ['clicks','pnp','makro','shoprite','dischem','game'];
+const BANNER_LABELS = { clicks:'Clicks', pnp:'PnP', makro:'Makro', shoprite:'Shoprite', dischem:'Dis-Chem', game:'Game' };
+
+function renderBannerTable() {
+  const body = document.getElementById('banner-body');
+  body.innerHTML = BANNER_KEYS.map(bk => {
+    const vals  = ALL_DATA.map(s => s[bk]).filter(v => v && v !== '');
+    const yes   = vals.filter(v=>v==='YES').length;
+    const no    = vals.filter(v=>v==='NO').length;
+    const tbc   = vals.filter(v=>v==='TBC').length;
+    const disc  = vals.filter(v=>v==='In Discussion'||v==='In discussion to list').length;
+    const pct   = vals.length ? yes/vals.length : 0;
+    const pctPx = Math.round(pct*100);
+    const status = pct>=.9?'Ready':pct>=.6?'Watch':'Risk';
+    const barColor = status==='Ready'?'#1A7A4A':status==='Watch'?'#D97706':'#C0392B';
+    return `<tr>
+      <td class="name">${BANNER_LABELS[bk]}</td>
+      <td class="num" style="color:#1A7A4A;font-weight:600">${yes}</td>
+      <td class="num" style="color:${no>0?'#C0392B':'#b0b8cc'};font-weight:${no>0?600:400}">${no}</td>
+      <td class="num" style="color:${tbc>0?'#D97706':'#b0b8cc'};font-weight:${tbc>0?600:400}">${tbc}</td>
+      <td class="num" style="color:${disc>0?'#3A2E8C':'#b0b8cc'};font-weight:${disc>0?600:400}">${disc}</td>
+      <td style="min-width:120px">
+        <div style="display:flex;align-items:center;gap:8px">
+          <div class="prog-wrap" style="flex:1"><div class="prog-fill" style="width:${pctPx}%;background:${barColor}"></div></div>
+          <span style="font-size:11px;color:var(--mid);min-width:28px;text-align:right">${pctPx}%</span>
+        </div>
+      </td>
+      <td class="num"><span class="badge b-${status.toLowerCase()}">${status}</span></td>
+    </tr>`;
+  }).join('');
+}
+
+// ─── Brand table ──────────────────────────────────────────────────────────────
+function renderBrandTable() {
+  const brands = [...new Set(ALL_DATA.map(s=>s.brand))].filter(Boolean).sort();
+  document.getElementById('brand-body').innerHTML = brands.map(brand => {
+    const skus  = ALL_DATA.filter(s=>s.brand===brand);
+    const gaps  = skus.filter(s=>s.status==='Listing Gap').length;
+    const plano = skus.filter(s=>s.planoStatus==='Outstanding'||s.planoStatus==='To update'||s.planoStatus==='Pending').length;
+    const gapPct = skus.length ? Math.round(gaps/skus.length*100) : 0;
+    return `<tr>
+      <td class="name">${brand}</td>
+      <td class="num">${skus.length}</td>
+      <td class="num" style="color:${gaps>0?'#C0392B':'#1A7A4A'};font-weight:600">${gaps}</td>
+      <td class="num" style="color:${gaps>0?'#C0392B':'#1A7A4A'};font-size:11px">${gapPct}%</td>
+      <td class="num" style="color:${plano>0?'#D97706':'#1A7A4A'};font-weight:600">${plano}</td>
+    </tr>`;
+  }).join('');
+}
+
+// ─── Month table ──────────────────────────────────────────────────────────────
+function renderMonthTable() {
+  const monthOrder = ['Feb-25','Jul-25','Aug-25','Apr-26','May-26','Jun-26','Jul-26'];
+  const map = {};
+  ALL_DATA.forEach(s => {
+    const m = s.launch || 'TBD';
+    if (!map[m]) map[m] = {count:0,gaps:0};
+    map[m].count++;
+    if (s.status==='Listing Gap') map[m].gaps++;
+  });
+  const months = [...new Set([...monthOrder,...Object.keys(map)])].filter(m=>map[m]);
+  document.getElementById('month-body').innerHTML = months.map(m => {
+    const {count,gaps} = map[m]||{count:0,gaps:0};
+    return `<tr>
+      <td class="name">${m}</td>
+      <td class="num">${count}</td>
+      <td class="num" style="color:${gaps>0?'#C0392B':'#1A7A4A'};font-weight:600">${gaps}</td>
+    </tr>`;
+  }).join('');
+}
+
+// ─── Planogram & Image row ────────────────────────────────────────────────────
+function renderPlanoRow() {
+  const d = ALL_DATA;
+  const total = d.length;
+  const pct = n => total ? Math.round(n/total*100) : 0;
+
+  const planoRec  = d.filter(s=>s.planoStatus==='Received').length;
+  const planoOut  = d.filter(s=>s.planoStatus==='Outstanding').length;
+  const planoTbc  = d.filter(s=>s.planoStatus==='To confirm').length;
+  const planoUpd  = d.filter(s=>s.planoStatus==='To update').length;
+  const imgAvail  = d.filter(s=>s.imageStatus==='Available').length;
+  const imgMiss   = d.filter(s=>s.imageStatus==='Missing').length;
+
+  function stat(val, label, color) {
+    return `<div style="display:flex;align-items:center;gap:10px;padding:6px 20px 6px 0">
+      <span style="width:10px;height:10px;border-radius:2px;background:${color};flex-shrink:0;display:inline-block;margin-top:1px"></span>
+      <div>
+        <div style="line-height:1.1">
+          <span style="font-size:26px;font-weight:700;color:${color}">${val}</span>
+          <span style="font-size:11.5px;color:var(--light);margin-left:4px">${pct(val)}%</span>
+        </div>
+        <div style="font-size:11px;color:var(--mid);margin-top:2px">${label}</div>
+      </div>
+    </div>`;
+  }
+
+  function sectionLabel(text) {
+    return `<div style="display:flex;align-items:center;padding-right:20px;border-right:1px solid var(--gborder);margin-right:20px;align-self:stretch">
+      <div style="font-size:9px;font-weight:700;letter-spacing:.9px;text-transform:uppercase;color:var(--light);writing-mode:vertical-lr;transform:rotate(180deg);white-space:nowrap">${text}</div>
+    </div>`;
+  }
+
+  document.getElementById('plano-row').innerHTML =
+    sectionLabel('Planogram') +
+    stat(planoRec, 'Received',    '#1A7A4A') +
+    stat(planoOut, 'Outstanding', '#C0392B') +
+    stat(planoTbc, 'To Confirm',  '#D97706') +
+    stat(planoUpd, 'Not yet updated', '#8A99B5') +
+    `<div style="width:1px;background:var(--gborder);align-self:stretch;margin:0 20px 0 4px"></div>` +
+    sectionLabel('Images') +
+    stat(imgAvail, 'Available', '#1A7A4A') +
+    stat(imgMiss,  'Missing',   '#C0392B');
+}
+
+// ─── Countdown ────────────────────────────────────────────────────────────────
+function renderCountdown() {
+  const future = ALL_DATA
+    .filter(s => s.daysAway !== null && s.daysAway >= 0)
+    .sort((a,b) => a.daysAway - b.daysAway);
+
+  const emptyHtml = `<div class="empty-state"><h3>No upcoming launches found</h3><p>Make sure your Launch Date column is filled in on the Initiative Tracker sheet.</p></div>`;
+
+  const cardsHtml = future.length ? future.map(s => {
+    const cls = s.daysAway<=7?'urgent':s.daysAway<=14?'soon':s.daysAway<=30?'approach':'ontrack';
+    const dateStr = s.launchDate
+      ? s.launchDate.toLocaleDateString('en-ZA',{day:'2-digit',month:'short',year:'numeric'})
+      : s.launch;
+    return `<div class="cd-card ${cls}">
+      <div class="cd-days">
+        <div class="cd-days-num">${s.daysAway}</div>
+        <div class="cd-days-label">${s.daysAway===1?'day':'days'}</div>
+      </div>
+      <div class="cd-info">
+        <div class="cd-desc">${s.desc}</div>
+        <div class="cd-meta">${s.brand} &nbsp;·&nbsp; ${dateStr}</div>
+        <div class="cd-foot">
+          <span class="badge b-${s.status.toLowerCase().replace(/ /g,'-')}">${s.status}</span>
+          <span class="badge b-${s.risk.toLowerCase()}">${s.risk}</span>
+          <span style="font-size:10.5px;color:var(--mid);margin-left:2px">${Math.round(s.pct*100)}% listed</span>
+        </div>
+      </div>
+    </div>`;
+  }).join('') : emptyHtml;
+
+  // Populate both — dashboard inline section and dedicated tab
+  document.getElementById('countdown-grid').innerHTML = cardsHtml;
+}
+
+// ─── Tracker table ────────────────────────────────────────────────────────────
+function populateFilters() {
+  const brands  = [...new Set(ALL_DATA.map(s=>s.brand).filter(Boolean))].sort();
+  const launches = [...new Set(ALL_DATA.map(s=>s.launch).filter(Boolean))].sort();
+  const sel = (id, opts) => {
+    const el = document.getElementById(id);
+    const cur = el.value;
+    const first = el.options[0].outerHTML;
+    el.innerHTML = first + opts.map(o=>`<option ${o===cur?'selected':''}>${o}</option>`).join('');
+  };
+  sel('f-brand', brands);
+  sel('f-launch', launches);
+}
+
+function filterTracker() {
+  const brand  = document.getElementById('f-brand').value;
+  const launch = document.getElementById('f-launch').value;
+  const status = document.getElementById('f-status').value;
+  const risk   = document.getElementById('f-risk').value;
+  const plano  = document.getElementById('f-plano').value;
+  const search = document.getElementById('f-search').value.toLowerCase().trim();
+
+  const filtered = ALL_DATA.filter(s => {
+    if (brand  && s.brand    !== brand)  return false;
+    if (launch && s.launch   !== launch) return false;
+    if (status && s.status   !== status) return false;
+    if (risk   && s.risk     !== risk)   return false;
+    if (plano  && s.planoStatus !== plano)  return false;
+    if (search && !s.desc.toLowerCase().includes(search) && !s.barcode.includes(search)) return false;
+    return true;
+  });
+
+  document.getElementById('filter-count').textContent =
+    `Showing ${filtered.length} of ${ALL_DATA.length} SKUs`;
+  renderTrackerRows(filtered);
+}
+
+function resetFilters() {
+  ['f-brand','f-launch','f-status','f-risk','f-plano'].forEach(id => document.getElementById(id).value='');
+  document.getElementById('f-search').value='';
+  filterTracker();
+}
+
+function bannerCell(val) {
+  if (!val || val==='') return `<td class="num"><span style="color:#d0d5e8">—</span></td>`;
+  const norm = val==='In discussion to list'?'In Discussion':val;
+  const cls = norm==='YES'?'b-yes':norm==='NO'?'b-no':norm==='TBC'?'b-tbc':'b-disc';
+  const short = norm==='In Discussion'?'DISC':norm;
+  return `<td class="num"><span class="badge ${cls}">${short}</span></td>`;
+}
+
+function renderTrackerRows(data) {
+  const body = document.getElementById('tracker-body');
+  if (!data.length) {
+    body.innerHTML = `<tr><td colspan="18" class="no-data">No SKUs match your filters.</td></tr>`;
+    return;
+  }
+  body.innerHTML = data.map(s => {
+    const pctPx = Math.round(s.pct*100);
+    const barColor = s.pct>=.9?'#1A7A4A':s.pct>=.6?'#D97706':'#C0392B';
+    const imgBadge = s.imageStatus==='Available'
+      ? `<span class="badge b-available">✓</span>`
+      : s.imageStatus==='Missing'
+      ? `<span class="badge b-missing">✗</span>`
+      : `<span style="color:#d0d5e8">—</span>`;
+    const planoBadge = s.planoStatus === 'Received'
+      ? `<span class="badge b-yes">Received</span>`
+      : s.planoStatus === 'Outstanding'
+      ? `<span class="badge b-no">Outstanding</span>`
+      : s.planoStatus === 'To confirm'
+      ? `<span class="badge b-tbc">To confirm</span>`
+      : s.planoStatus === 'To update'
+      ? `<span class="badge b-tbc">To update</span>`
+      : s.planoStatus === 'N/A'
+      ? `<span class="badge b-pending">N/A</span>`
+      : `<span class="badge b-pending">Pending</span>`;
+
+    const planoDateStr = s.planoDate instanceof Date && !isNaN(s.planoDate)
+      ? s.planoDate.toLocaleDateString('en-ZA',{day:'2-digit',month:'short',year:'numeric'})
+      : s.planoDate ? String(s.planoDate).slice(0,10) : '—';
+    return `<tr>
+      <td style="font-family:monospace;font-size:10.5px;color:var(--light)">${s.barcode}</td>
+      <td class="name" style="max-width:220px">${s.desc}</td>
+      <td style="color:var(--mid);white-space:nowrap">${s.brand}</td>
+      <td style="color:var(--mid);white-space:nowrap">${s.launch}</td>
+      <td class="num">${imgBadge}</td>
+      <td class="num">${planoBadge}</td>
+      <td class="num" style="font-size:10.5px;color:var(--mid);white-space:nowrap">${planoDateStr}</td>
+      ${bannerCell(s.clicks)}
+      ${bannerCell(s.pnp)}
+      ${bannerCell(s.makro)}
+      ${bannerCell(s.shoprite)}
+      ${bannerCell(s.dischem)}
+      ${bannerCell(s.game)}
+      <td style="min-width:90px">
+        <div style="display:flex;align-items:center;gap:6px">
+          <div class="prog-wrap"><div class="prog-fill" style="width:${pctPx}%;background:${barColor}"></div></div>
+          <span style="font-size:11px;color:var(--mid)">${pctPx}%</span>
+        </div>
+      </td>
+      <td class="num"><span class="badge b-${s.status.toLowerCase().replace(/ /g,'-')}">${s.status}</span></td>
+      <td class="num"><span class="badge b-${s.risk.toLowerCase()}">${s.risk}</span></td>
+      <td style="font-size:11px;color:var(--mid)">${s.owner||'—'}</td>
+      <td style="font-size:11px;color:var(--mid);max-width:180px;line-height:1.3">${s.nextAction||'—'}</td>
+      <td style="font-size:11px;color:var(--mid);max-width:180px;line-height:1.3">${s.comments||'—'}</td>
+    </tr>`;
+  }).join('');
+}
+</script>
+</body>
+</html>
