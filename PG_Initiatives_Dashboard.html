@@ -577,7 +577,7 @@ function handleFile(e) {
 // ─── Page ready — show sign in button ────────────────────────────────────────
 async function signInAndLoad() {
   try {
-    if (!msalInstance) await initMsal();
+    if (!msalInstance) await getMsalInstance();
     setStatus('Redirecting to Microsoft sign-in...');
     const loginRequest = {
       scopes: ['https://graph.microsoft.com/Sites.Read.All', 'https://graph.microsoft.com/Files.Read.All']
