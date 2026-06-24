@@ -411,7 +411,7 @@ function showManualFallback(reason) {
 }
 
 // ─── MSAL / Graph API auto-load ───────────────────────────────────────────────
-// ─── Simple OAuth2 Auth (no MSAL, no interaction_in_progress) ────────────────
+// ─── Simple OAuth2 Auth ────────────────────────────────────────────────────────
 const REDIRECT_URI = window.location.href.split('?')[0].split('#')[0];
 const AUTH_URL = `https://login.microsoftonline.com/${TENANT_ID}/oauth2/v2.0/authorize`;
 const SCOPES = 'https://graph.microsoft.com/Sites.Read.All https://graph.microsoft.com/Files.Read.All';
