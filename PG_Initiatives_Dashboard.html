@@ -482,7 +482,7 @@ function handleFile(e) {
 }
 
 
-window.addEventListener('DOMContentLoaded', () => setStatus('Click "Sign in" to connect to SharePoint automatically.'));
+window.addEventListener('DOMContentLoaded', () => autoLoad());
 
 function now() {
   return new Date().toLocaleString('en-ZA',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'});
