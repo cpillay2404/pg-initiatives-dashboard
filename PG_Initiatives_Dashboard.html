@@ -481,30 +481,7 @@ function handleFile(e) {
   reader.readAsBinaryString(file);
 }
 
-// ─── Page ready — show sign in button ────────────────────────────────────────
-async function signInAndLoad() {
-  try {
-    if (!msalInstance) await getMsalInstance();
-    setStatus('Redirecting to Microsoft sign-in...');
-    const loginRequest = {
-      scopes: ['https://graph.microsoft.com/Sites.Read.All', 'https://graph.microsoft.com/Files.Read.All']
-    };
-    const accounts = msalInstance.getAllAccounts();
-    if (accounts.length > 0) {
-      try {
-        const silentResult = await msalInstance.acquireTokenSilent({ ...loginRequest, account: accounts[0] });
-        accessToken = silentResult.accessToken;
-        setStatus('Signed in — loading data...');
-        await loadFromGraph();
-        return;
-      } catch(e) { /* need redirect */ }
-    }
-    await msalInstance.loginRedirect(loginRequest);
-  } catch(err) {
-    console.error('Sign-in error:', err);
-    showManualFallback(`Sign-in failed: ${err.errorCode || err.message || JSON.stringify(err).slice(0,100)}`);
-  }
-}
+
 window.addEventListener('DOMContentLoaded', () => setStatus('Click "Sign in" to connect to SharePoint automatically.'));
 
 function now() {
