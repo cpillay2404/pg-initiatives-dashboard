@@ -444,27 +444,58 @@ function getErrorFromHash() {
 
 async function loadFromGraph() {
   try {
-    setStatus('Reading Excel file from SharePoint...');
-    const siteUrl = `https://graph.microsoft.com/v1.0/sites/meridiangroupza.sharepoint.com:/sites/PowerBI9-PowerBI-PG`;
-    const siteResp = await fetch(siteUrl, {
-      headers: { Authorization: `Bearer ${accessToken}` }
-    });
-    if (!siteResp.ok) throw new Error(`Site lookup failed: ${siteResp.status}`);
-    const siteData = await siteResp.json();
-    const siteId = siteData.id;
-    setStatus('Found site — getting file...');
-    const fileUrl = `https://graph.microsoft.com/v1.0/sites/${siteId}/drive/root:/Shared%20Documents/Power%20BI%20-%20PG/Initiatives%20Tracker/New_Initiatives_2026_Tracker_.xlsx:/content`;
-    const fileResp = await fetch(fileUrl, {
-      headers: { Authorization: `Bearer ${accessToken}` }
-    });
-    if (!fileResp.ok) throw new Error(`File read failed: ${fileResp.status}`);
-    setStatus('File retrieved — loading dashboard...');
-    const arrayBuffer = await fileResp.arrayBuffer();
-    const wb = XLSX.read(arrayBuffer, { type: 'array', cellDates: true });
+    setStatus('Connecting to SharePoint...');
+
+    // Step 1: Get site
+    const siteResp = await fetch(
+      'https://graph.microsoft.com/v1.0/sites/meridiangroupza.sharepoint.com:/sites/PowerBI9-PowerBI-PG',
+      { headers: { Authorization: `Bearer ${accessToken}` } }
+    );
+    if (!siteResp.ok) { const t = await siteResp.text(); throw new Error(`Site: ${siteResp.status} ${t.slice(0,100)}`); }
+    const siteId = (await siteResp.json()).id;
+
+    // Step 2: Get all drives and find Documents
+    const drivesResp = await fetch(
+      `https://graph.microsoft.com/v1.0/sites/${siteId}/drives`,
+      { headers: { Authorization: `Bearer ${accessToken}` } }
+    );
+    if (!drivesResp.ok) { const t = await drivesResp.text(); throw new Error(`Drives: ${drivesResp.status} ${t.slice(0,100)}`); }
+    const drives = (await drivesResp.json()).value || [];
+    setStatus(`Found ${drives.length} drive(s) — searching for file...`);
+
+    // Try each drive
+    let fileItem = null;
+    let driveId = null;
+    for (const drive of drives) {
+      try {
+        const sr = await fetch(
+          `https://graph.microsoft.com/v1.0/drives/${drive.id}/root/search(q='New_Initiatives_2026_Tracker_')`,
+          { headers: { Authorization: `Bearer ${accessToken}` } }
+        );
+        if (!sr.ok) continue;
+        const sd = await sr.json();
+        const found = (sd.value || []).find(f => f.name && f.name.toLowerCase().endsWith('.xlsx'));
+        if (found) { fileItem = found; driveId = drive.id; break; }
+      } catch(e) { continue; }
+    }
+
+    if (!fileItem) throw new Error('Excel file not found across ' + drives.length + ' drives. Names: ' + drives.map(d=>d.name).join(', '));
+    setStatus(`Found: ${fileItem.name} — downloading...`);
+
+    // Step 3: Download
+    const fileResp = await fetch(
+      `https://graph.microsoft.com/v1.0/drives/${driveId}/items/${fileItem.id}/content`,
+      { headers: { Authorization: `Bearer ${accessToken}` } }
+    );
+    if (!fileResp.ok) { const t = await fileResp.text(); throw new Error(`Download: ${fileResp.status} ${t.slice(0,100)}`); }
+
+    setStatus('File downloaded — loading dashboard...');
+    const wb = XLSX.read(await fileResp.arrayBuffer(), { type: 'array', cellDates: true });
     processWorkbook(wb, 'SharePoint (live)');
+
   } catch(err) {
     console.error('loadFromGraph error:', err);
-    showManualFallback(`Could not load from SharePoint: ${err.message}`);
+    showManualFallback(`SharePoint error: ${err.message}`);
   }
 }
 
