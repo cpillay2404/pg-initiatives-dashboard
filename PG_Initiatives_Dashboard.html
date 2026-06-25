@@ -446,48 +446,22 @@ async function loadFromGraph() {
   try {
     setStatus('Connecting to SharePoint...');
 
-    // Step 1: Get site
+    // Get site ID
     const siteResp = await fetch(
       'https://graph.microsoft.com/v1.0/sites/meridiangroupza.sharepoint.com:/sites/PowerBI9-PowerBI-PG',
       { headers: { Authorization: `Bearer ${accessToken}` } }
     );
-    if (!siteResp.ok) { const t = await siteResp.text(); throw new Error(`Site: ${siteResp.status} ${t.slice(0,100)}`); }
+    if (!siteResp.ok) { const t = await siteResp.text(); throw new Error(`Site: ${siteResp.status} ${t.slice(0,150)}`); }
     const siteId = (await siteResp.json()).id;
+    setStatus('Site found — getting file...');
 
-    // Step 2: Get all drives and find Documents
-    const drivesResp = await fetch(
-      `https://graph.microsoft.com/v1.0/sites/${siteId}/drives`,
-      { headers: { Authorization: `Bearer ${accessToken}` } }
-    );
-    if (!drivesResp.ok) { const t = await drivesResp.text(); throw new Error(`Drives: ${drivesResp.status} ${t.slice(0,100)}`); }
-    const drives = (await drivesResp.json()).value || [];
-    setStatus(`Found ${drives.length} drive(s) — searching for file...`);
-
-    // Try each drive
-    let fileItem = null;
-    let driveId = null;
-    for (const drive of drives) {
-      try {
-        const sr = await fetch(
-          `https://graph.microsoft.com/v1.0/drives/${drive.id}/root/search(q='New_Initiatives_2026_Tracker_')`,
-          { headers: { Authorization: `Bearer ${accessToken}` } }
-        );
-        if (!sr.ok) continue;
-        const sd = await sr.json();
-        const found = (sd.value || []).find(f => f.name && f.name.toLowerCase().endsWith('.xlsx'));
-        if (found) { fileItem = found; driveId = drive.id; break; }
-      } catch(e) { continue; }
-    }
-
-    if (!fileItem) throw new Error('Excel file not found across ' + drives.length + ' drives. Names: ' + drives.map(d=>d.name).join(', '));
-    setStatus(`Found: ${fileItem.name} — downloading...`);
-
-    // Step 3: Download
+    // Get file directly by path
+    const filePath = 'Power BI - PG/Initiatives Tracker/New_Initiatives_2026_Tracker_.xlsx';
     const fileResp = await fetch(
-      `https://graph.microsoft.com/v1.0/drives/${driveId}/items/${fileItem.id}/content`,
+      `https://graph.microsoft.com/v1.0/sites/${siteId}/drive/root:/${encodeURIComponent(filePath).replace(/%2F/g,'/')}:/content`,
       { headers: { Authorization: `Bearer ${accessToken}` } }
     );
-    if (!fileResp.ok) { const t = await fileResp.text(); throw new Error(`Download: ${fileResp.status} ${t.slice(0,100)}`); }
+    if (!fileResp.ok) { const t = await fileResp.text(); throw new Error(`File: ${fileResp.status} ${t.slice(0,150)}`); }
 
     setStatus('File downloaded — loading dashboard...');
     const wb = XLSX.read(await fileResp.arrayBuffer(), { type: 'array', cellDates: true });
@@ -498,6 +472,7 @@ async function loadFromGraph() {
     showManualFallback(`SharePoint error: ${err.message}`);
   }
 }
+
 
 async function autoLoad() {
   // Check sessionStorage first (token captured synchronously on page load)
